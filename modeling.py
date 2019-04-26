@@ -3,21 +3,19 @@ from allennlp.modules.token_embedders import BertEmbedder
 from pytorch_pretrained_bert.modeling import BertModel
 from allennlp.modules.seq2vec_encoders import CnnEncoder
 import torch.nn.functional as F
-
+from data import Vocab
+from pytorch_pretrained_bert.tokenization import WordpieceTokenizer
+from allennlp.data.dataset_readers import text_classification_json
+from functools import reduce
+import operator
 
 #bert, token_character -->(concat) --> lstm --> crf
-
-
-cnnEncoder = CnnEncoder(embedding_dim=16, num_filters=128,
-                        ngram_filter_sizes=[3],conv_layer_activation=nn.ReLU())
-
-
 class PretrainedBertEmbedder(BertEmbedder):
-    def __init__(self, pretrained_model, requires_grad:False, top_layer_only:False):
+    def __init__(self, pretrained_model, requires_grad=False, top_layer_only=False):
         model = BertModel.from_pretrained(pretrained_model)
         for param in model.parameters():
-            param.requires.grad = requires_grad
-        super().__init__(bert_model=pretrained_model, top_layer_only=top_layer_only)
+            param.requires_grad = requires_grad
+        super().__init__(bert_model=model, top_layer_only=top_layer_only)
 
 
 class TokenCharactersEncoder(nn.Module):
@@ -52,7 +50,23 @@ class Encoder(nn.Module):
 
 
 
+if __name__ == '__main__':
+    bert_vocab = Vocab('../scibert-master/scibert_scivocab_uncased/vocab.txt')
+    tokernizer = WordpieceTokenizer(bert_vocab.word_to_idx)
 
+    sentence = "The problem is formulated in a manner that subsumes structure from motion"
+    words = list(reduce(operator.add, [tokernizer.tokenize(word) for word in sentence.split()]))
+    print(words)
+
+
+    vocab = Vocab('../scibert-master/vocab.txt')
+
+    cnnEncoder = CnnEncoder(embedding_dim=16, num_filters=128, ngram_filter_sizes=[3], conv_layer_activation=nn.ReLU())
+    embedding = nn.Embedding(16, len(vocab))
+    bert_model = PretrainedBertEmbedder("../scibert-master/scibert_scivocab_uncased/weights.tar.gz")
+    tokencharacter_encoder = TokenCharactersEncoder(cnnEncoder,embedding)
+
+    print('model load finished......')
 
 
 
