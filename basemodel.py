@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.init as init
 from utils import *
 from allennlp.modules.seq2vec_encoders import CnnEncoder
+from allennlp.modules.token_embedders import PretrainedBertEmbedder
 
 class BaseModel(nn.Module):
     def __init__(self, vocab_size, input_dim, output_dim,
@@ -11,7 +12,8 @@ class BaseModel(nn.Module):
                  char_vocab_size = None,
                  char_embedding_size = None,
                  num_filter=None,
-                 ngram_filter_size = None
+                 ngram_filter_size = None,
+                 bert_weight = None
                  ):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, input_dim)
@@ -21,9 +23,13 @@ class BaseModel(nn.Module):
         init.orthogonal_(self._init_c)
         init.uniform_(self.embedding.weight, -0.01, 0.01)
         self.lstm = nn.LSTM(input_dim, output_dim, num_layers=n_layers, bidirectional=True, dropout=dropout, batch_first=True)
+
         if char_vocab_size:
             self.char_embedding = nn.Embedding(char_vocab_size, char_embedding_size)
             self.char_encoder = CnnEncoder(embedding_dim=char_embedding_size, num_filters=num_filter, ngram_filter_sizes=ngram_filter_size)
+
+        if bert_weight:
+            self.bert = PretrainedBertEmbedder(bert_weight)
 
     #sequence, lstm, seq_lens, init_states, is_mask=False, get_final_output=False:
     def _lstm_forward(self, emb_input, input_lens):
@@ -48,6 +54,19 @@ class BaseModel(nn.Module):
         char_emb_input = char_emb_input.view(batch_size, max_seq_len, -1)
         return char_emb_input
 
+    def use_bert(self, input, offset):
+        input, max_len = save_to_max_nozero_len(input)
+        assert input.size(1) == max_len
+        type_id = input.new_zeros(input.size()).zero_()
+
+        offset, offset_max_len = save_to_max_nozero_len(offset)
+        assert offset.size(1) == offset_max_len
+
+        bert_output = self.bert(input.long(), offset, type_id)
+        assert bert_output.size(1) == offset_max_len
+        return bert_output
+
+
 
     def forward(self, **kwargs):
         word_sequence = kwargs['word_sequence']
@@ -62,6 +81,13 @@ class BaseModel(nn.Module):
         char_encoder_output = self.cnn_forward(char_seq_emb, char_sequence_len)
         print(f'encoder output size : {encoder_output.size()}')
         print(f'char_encoder output size : {char_encoder_output.size()}')
+
+
+
+
+
+
+
 if __name__ == '__main__':
     word_sequence = torch.LongTensor([[1,2,3,4,5], [1,2,3,4,0]])
     char_sequence = torch.LongTensor([[[1,1,1,1,1], [2,2,2,0,0], [3,3,3,0,0], [4,4,4,4,0], [5,5,0,0,0]],

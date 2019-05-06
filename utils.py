@@ -30,9 +30,6 @@ def get_mask(lens):
     return mask.float()
 
 
-
-
-
 def get_mask_2(lens):
     max_len = max(lens)
     batch_size = len(lens)
@@ -112,6 +109,34 @@ def reorder_lstm_states(states, order):
     order = torch.LongTensor(order)
     sorted_states = (states[0].index_select(index=order, dim=1), states[1].index_select(index=order, dim=1))
     return sorted_states
+
+
+def tokens_to_indices(tokens, vocab, tokenizer, max_pieces=512):
+    wordpiece_ids = [vocab.word2id('[CLS]')]
+    offset = 1
+    offsets = []
+    for token in tokens:
+        text = token.lower()
+        token_wordpiece_ids = [vocab.word2id(wordpiece) for wordpiece in tokenizer.tokenize(text)]
+        if len(wordpiece_ids) + len(token_wordpiece_ids) + 1 <= max_pieces:
+            offsets.append(offset)
+            offset += len(token_wordpiece_ids)
+            wordpiece_ids.extend(token_wordpiece_ids)
+        else:
+            break
+    wordpiece_ids.extend([vocab.word2id('[SEP]')])
+    return wordpiece_ids, offsets
+
+
+
+def save_to_max_nozero_len(input):
+    batch_size, seq_len = input.size()
+    max_len = torch.max(torch.sum(input > 0, dim=-1)).long().item()
+    for i in range(len(batch_size)):
+        input[i] = input[i, :max_len]
+    return input, max_len
+
+
 
 
 
