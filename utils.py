@@ -49,13 +49,12 @@ def get_char_mask(lens):
     :param lens: list of batch, in particularly, every item is a list, and every item in the list means the length of word
     :return: mask [batch, max_seq_len, max_word_len]
     '''
-    max_seq_len = len(max(lens, key=len))
-    tensor_len = torch.zeros((len(lens), max_seq_len))
+    max_seq_len = torch.max(torch.sum(lens > 0, dim=-1)).long().item()
+    tensor_len = torch.zeros((lens.size(0), max_seq_len))
 
     #first trunk every len to max_seq_len
-    for i in range(len(lens)):
-        for j in range(len(lens[i])):
-            tensor_len[i,j] = lens[i][j]
+    for i in range(lens.size(0)):
+            tensor_len[i] = lens[i,:max_seq_len]
 
     batch_size, seq_len = tensor_len.size()
     max_word_len = torch.max(tensor_len).int().item()
@@ -70,16 +69,17 @@ def get_char_mask(lens):
 
 def lstm_encoder(sequence, lstm, seq_lens, init_states, is_mask=False, get_final_output=False):
     batch_size = sequence.size(0)
-    assert len(seq_lens) == batch_size
-    sort_ind = np.argsort(seq_lens)[::-1].tolist()
-    sort_seq_lens = [seq_lens[i] for i in sort_ind]
+    seq_lens_value = seq_lens.tolist()
+    assert len(seq_lens_value) == batch_size
+    sort_ind = np.argsort(seq_lens_value)[::-1].tolist()
+    sort_seq_lens = [seq_lens_value[i] for i in sort_ind]
     emb_sequence = reorder_sequence(sequence, sort_ind)
 
     init_states = (init_states[0].contiguous(), init_states[1].contiguous())
 
-    packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, sort_seq_lens)
+    packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, sort_seq_lens, batch_first=True)
     packed_out, final_states = lstm(packed_seq, init_states)
-    lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out)
+    lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out, batch_first=True)
     back_map = {ind : i for i, ind in enumerate(sort_ind)}
     reorder_ind = [back_map[i] for i in range(len(sort_ind))]
     lstm_out = reorder_sequence(lstm_out, reorder_ind)
